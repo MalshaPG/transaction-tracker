@@ -24,7 +24,11 @@ var transactions = []transaction{
 func main() {
     // Initialize a Gin router using Default.
     router := gin.Default()
-    // r.POST("/transactions", createTransaction)
+
+	// With Gin, you can associate a handler with an HTTP method-and-path combination. 
+	// In this way, you can separately route requests sent to a single path 
+	// based on the method the client is using.
+    router.POST("/transactions", saveTransaction)
     router.GET("/transactions", getTransactions)
     // r.PUT("/transactions/:id", updateTransaction)
 
@@ -32,12 +36,28 @@ func main() {
     router.Run("localhost:8080")
 }
 
-// getAlbums responds with the list of all albums as JSON.
+// getAlbums responds with the list of all transactions as JSON.
 //gin.Context is the most important part of Gin. 
 //It carries request details, validates and serializes JSON, and more. 
 func getTransactions(c *gin.Context) {
     //Call Context.IndentedJSON to serialize the struct into JSON and add it to the response.
     c.IndentedJSON(http.StatusOK, transactions)
+}
+
+// saveTransaction adds a transaction from JSON received in the request body.
+func saveTransaction(c *gin.Context) {
+    var newTransaction transaction
+
+    // Call BindJSON to bind the received JSON to newTransaction.
+    if err := c.BindJSON(&newTransaction); err != nil {
+        return
+    }
+
+    // Add the new transaction to the slice.
+    transactions = append(transactions, newTransaction)
+
+	// Add a 201 status code to the response, along with JSON representing the transaction added.
+    c.IndentedJSON(http.StatusCreated, newTransaction)
 }
 
 
