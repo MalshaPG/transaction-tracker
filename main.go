@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/gin-gonic/gin"
-
-	"net/http"
+    "github.com/gin-gonic/gin"
+    "net/http"
+    "strings"
 )
 
 type transaction struct {
@@ -30,6 +30,7 @@ func main() {
 	// based on the method the client is using.
     router.POST("/transactions", saveTransaction)
     router.GET("/transactions", getTransactions)
+    router.GET("/transactions/:type", getTransactionByType)
     // r.PUT("/transactions/:id", updateTransaction)
 
     //Use the Run function to attach the router to an http.Server and start the server.
@@ -59,6 +60,28 @@ func saveTransaction(c *gin.Context) {
 	// Add a 201 status code to the response, along with JSON representing the transaction added.
     c.IndentedJSON(http.StatusCreated, newTransaction)
 }
+
+//getTransactionByType located the transaction whose type value matches the id
+// paramenter sent by the client, then returns thst tarnsactions as a response
+func getTransactionByType(c *gin.Context) {
+    transactionType := c.Param("type")
+
+    var results []transaction 
+
+    for _, a := range transactions {
+        if strings.ToLower(a.Type) == strings.ToLower(transactionType) {
+            results = append(results, a)    
+        }
+    }
+
+    if len(results) == 0 {
+        c.IndentedJSON(http.StatusNotFound, gin.H{"message": "transaction not found"})
+        return
+    }
+    c.IndentedJSON(http.StatusOK, results)
+}
+
+
 
 
 
