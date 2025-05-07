@@ -2,34 +2,64 @@ package main
 
 import (
     "github.com/gin-gonic/gin"
-    "net/http"
-    "strings"
+    // "net/http"
+    // "strings"
+    "github.com/go-sql-driver/mysql"
+    "database/sql"
+    "os"
+    "log"
+    "fmt"
 )
 
 type transaction struct {
-    ID     int     `json:"id"`
-    Type  string   `json:"type"`
-    Name   string  `json:"name"`
-    Amount float64 `json:"amount"`
+    ID              int         `json:"id"`
+    Type            string      `json:"type"`
+    Description     string      `json:"name"`
+    Date            string      `json:"date"`
+    Amount          float64     `json:"amount"`
 }
 
 // transactions slice to seed record trancation data.
 // var is used for global (package-level) variables.
 // := cannot be used at the package level.
-var transactions = []transaction{
-    {ID: 1, Type: "Credit", Name: "Salary", Amount: 100},
-    {ID: 2, Type: "Debit", Name: "Buy groceries", Amount: 10.45},
-    {ID: 3, Type: "Debit", Name: "Movie ticket for Moana", Amount: 6.32}}
+// var transactions = []transaction{
+//     {ID: 1, Type: "Credit", Name: "Salary", Amount: 100},
+//     {ID: 2, Type: "Debit", Name: "Buy groceries", Amount: 10.45},
+//     {ID: 3, Type: "Debit", Name: "Movie ticket for Moana", Amount: 6.32}}
+
+   
+var db *sql.DB
 
 func main() {
+    // Capture connection properties.
+    cfg := mysql.NewConfig()
+    cfg.User = os.Getenv("DBUSER")
+    cfg.Passwd = ""
+    cfg.Net = "tcp"
+    cfg.Addr = "127.0.0.1:3306"
+    cfg.DBName = "transactions"
+
+    // Get a database handle.
+    var err error
+    db, err = sql.Open("mysql", cfg.FormatDSN())
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    pingErr := db.Ping()
+    if pingErr != nil {
+        log.Fatal(pingErr)
+    }
+    fmt.Println("Connected!")
+
     // Initialize a Gin router using Default.
     router := gin.Default()
 
 	// With Gin, you can associate a handler with an HTTP method-and-path combination. 
 	// In this way, you can separately route requests sent to a single path 
 	// based on the method the client is using.
-    router.POST("/transactions", saveTransaction)
-    router.GET("/transactions", getTransactions)
+    // router.POST("/transactions", saveTransaction)
+    // router.GET("/transactions", getTransactions)
     router.GET("/transactions/:type", getTransactionByType)
     // r.PUT("/transactions/:id", updateTransaction)
 
@@ -40,26 +70,26 @@ func main() {
 // getAlbums responds with the list of all transactions as JSON.
 //gin.Context is the most important part of Gin. 
 //It carries request details, validates and serializes JSON, and more. 
-func getTransactions(c *gin.Context) {
-    //Call Context.IndentedJSON to serialize the struct into JSON and add it to the response.
-    c.IndentedJSON(http.StatusOK, transactions)
-}
+// func getTransactions(c *gin.Context) {
+//     //Call Context.IndentedJSON to serialize the struct into JSON and add it to the response.
+//     c.IndentedJSON(http.StatusOK, transactions)
+// }
 
 // saveTransaction adds a transaction from JSON received in the request body.
-func saveTransaction(c *gin.Context) {
-    var newTransaction transaction
+// func saveTransaction(c *gin.Context) {
+//     var newTransaction transaction
 
-    // Call BindJSON to bind the received JSON to newTransaction.
-    if err := c.BindJSON(&newTransaction); err != nil {
-        return
-    }
+//     // Call BindJSON to bind the received JSON to newTransaction.
+//     if err := c.BindJSON(&newTransaction); err != nil {
+//         return
+//     }
 
-    // Add the new transaction to the slice.
-    transactions = append(transactions, newTransaction)
+//     // Add the new transaction to the slice.
+//     transactions = append(transactions, newTransaction)
 
-	// Add a 201 status code to the response, along with JSON representing the transaction added.
-    c.IndentedJSON(http.StatusCreated, newTransaction)
-}
+// 	// Add a 201 status code to the response, along with JSON representing the transaction added.
+//     c.IndentedJSON(http.StatusCreated, newTransaction)
+// }
 
 //getTransactionByType located the transaction whose type value matches the id
 // paramenter sent by the client, then returns thst tarnsactions as a response
@@ -68,17 +98,41 @@ func getTransactionByType(c *gin.Context) {
 
     var results []transaction 
 
-    for _, a := range transactions {
-        if strings.ToLower(a.Type) == strings.ToLower(transactionType) {
-            results = append(results, a)    
-        }
-    }
+    rows, err := db.Query("SELECT * FROM transactions WHERE type = ?", transactionType)
+    if err != nil {
+        c.JSON(500, gin.H{"error": fmt.Sprintf("Query error: %v", err)})
+        return    }
+    defer rows.Close()
 
+    //Loop through the rows, using Scan to assign column data to struct fields
+    for rows.Next(){
+        var trans transaction
+        if err := rows.Scan(&trans.ID, &trans.Type, &trans.Description, &trans.Date, &trans.Amount); err != nil {
+            c.JSON(500, gin.H{"error": fmt.Sprintf("Scan error: %v", err)})
+            return        }
+        results = append(results, trans)
+    }
+    if err := rows.Err(); err != nil {
+        c.JSON(500, gin.H{"error": fmt.Sprintf("Row error: %v", err)})
+    }
     if len(results) == 0 {
-        c.IndentedJSON(http.StatusNotFound, gin.H{"message": "transaction not found"})
+        c.JSON(404, gin.H{"message": "No transactions found for this type"})
         return
     }
-    c.IndentedJSON(http.StatusOK, results)
+
+    c.JSON(200, results)
+
+    // for _, a := range transactions {
+    //     if strings.ToLower(a.Type) == strings.ToLower(transactionType) {
+    //         results = append(results, a)    
+    //     }
+    // }
+
+    // if len(results) == 0 {
+    //     c.IndentedJSON(http.StatusNotFound, gin.H{"message": "transaction not found"})
+    //     return
+    // }
+    // c.IndentedJSON(http.StatusOK, results)
 }
 
 
