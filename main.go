@@ -55,7 +55,8 @@ func main() {
 	router.POST("/transactions", saveTransaction)
 	router.GET("/transactions", getTransactions)
 	router.GET("/transactions/:type", getTransactionByType)
-	// r.PUT("/transactions/:id", updateTransaction)
+	router.PUT("/transactions/:id", updateTransaction)
+	router.DELETE("/transactions/:id", deleteTransaction)
 
 	//Use the Run function to attach the router to an http.Server and start the server.
 	router.Run("localhost:8080")
@@ -87,7 +88,7 @@ func getTransactions(c *gin.Context) {
 
 		transactions = append(transactions, trans)
 	}
-	// c.IndentedJSON(http.StatusOK, transactions)
+	// return http.status code 500
 	c.JSON(http.StatusOK, transactions)
 }
 
@@ -132,6 +133,7 @@ func saveTransaction(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Error accessing the ID of the transaction: %v", err)})
 		return
 	}
+	//Return 201 http status code
 	c.JSON(http.StatusCreated, gin.H{"id": id})
 }
 
@@ -144,7 +146,7 @@ func getTransactionByType(c *gin.Context) {
 
 	rows, err := db.Query("SELECT * FROM transactions WHERE type = ?", transactionType)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Query error: %v", err)})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("error: %v", err)})
 		return
 	}
 	defer rows.Close()
@@ -166,6 +168,82 @@ func getTransactionByType(c *gin.Context) {
 		return
 	}
 
-	//send json response with the results
+	//send 200 OK http status code with the results
 	c.JSON(http.StatusOK, results)
+}
+
+func updateTransaction(c *gin.Context) {
+	id := c.Param("id")
+
+	var updatedTransaction transaction
+	if err := c.BindJSON(&updatedTransaction); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid JSON: %v", err)})
+		return
+	}
+
+	// Validate the inputs
+	if updatedTransaction.Type == "" || updatedTransaction.Amount <= 0 || updatedTransaction.Date == "" || updatedTransaction.Description == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "All fields are required and amount must be greater than 0"})
+		return
+	}
+
+	transactionType := strings.ToLower(updatedTransaction.Type)
+	if transactionType != "income" && transactionType != "expense" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Transaction type must be 'income' or 'expense'"})
+		return
+	}
+	// Overwrite the type
+	updatedTransaction.Type = transactionType
+
+	//Update the transaction in the database
+	query := "UPDATE transactions SET type = ?, description = ?, date = ?, amount = ? WHERE id = ?"
+
+	result, err := db.Exec(query, updatedTransaction.Type, updatedTransaction.Description, updatedTransaction.Date, updatedTransaction.Amount, id)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Update failed: %v", err)})
+		return
+	}
+
+	// Check if any rows were affected and return an appropriate response
+	affectedRowCount, err := result.RowsAffected()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Error checking affected rows: %v", err)})
+		return
+	}
+
+	if affectedRowCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"message": "Transaction not found"})
+		return
+	}
+
+	//return 200 OK status code with a message
+	c.JSON(http.StatusOK, gin.H{"message": "Transaction updated successfully", "id": id})
+
+}
+
+// DeleteTransaction removes a transaction from the database using the ID provided in the URL parameter.
+func deleteTransaction(c *gin.Context) {
+	id := c.Param("id")
+
+	result, err := db.Exec("DELETE FROM transactions WHERE id=?", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Delete failed: %v", err)})
+		return
+	}
+
+	// Check if any rows were affected and return an appropriate response
+	affectedRowCount, err := result.RowsAffected()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		return
+	}
+
+	if affectedRowCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"message": "Transaction not found"})
+		return
+	}
+
+	//return a 204 No Content status code
+	c.Status(http.StatusNoContent)
 }
